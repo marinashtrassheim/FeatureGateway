@@ -1,0 +1,21 @@
+# Три инстанса Redis (протокол совместим с KeyDB): v1 / v2 / v3.
+# Порты хоста: 7379 / 7380 / 7381
+#
+#   docker compose up -d
+#   python scripts/seed_demo_data.py --all --flush
+
+services:
+  keydb-v1:
+    image: redis:7-alpine
+    ports:
+      - "7379:6379"
+
+  keydb-v2:
+    image: redis:7-alpine
+    ports:
+      - "7380:6379"
+
+  keydb-v3:
+    image: redis:7-alpine
+    ports:
+      - "7381:6379"

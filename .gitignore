@@ -1,0 +1,58 @@
+# Секреты и локальная конфигурация
+.env
+.env.*
+!.env.example
+!env.docker.example
+
+# Виртуальное окружение
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Тесты и покрытие
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# IDE и редакторы
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+
+# Логи и временные файлы
+*.log
+tmp/
+temp/
+
+# Локальные дампы Redis/KeyDB (GitHub: лимит 100 MB на файл)
+data/
+*.rdb

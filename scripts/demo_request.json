@@ -1,0 +1,10 @@
+{
+  "brand": "lo",
+  "items": [100001, 100002],
+  "entries": [{ "user_id": 98117045 }],
+  "requested_features": {
+    "pers_user_item": [],
+    "pers_item": [],
+    "pers_offl": []
+  }
+}
