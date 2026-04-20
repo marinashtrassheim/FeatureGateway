@@ -22,6 +22,7 @@ pip install -r requirements.txt
 ```
 
 ### 3. Поднять три Redis (v1 / v2 / v3)
+Почему у нас 3 Redis? Потому что в проекте я тестировала разные варианты хранения данных в онлайн хранилище, затем тестировала выполнение запросов. Файлы выложены в https://drive.google.com/drive/folders/1p7FLw34R7v7sZ9NwRRiZ0EDIZrTXBKGX?usp=sharing
 
 ```bash
 docker compose up -d
