@@ -6,15 +6,20 @@ import pytest
 
 from app.api.v1.schemas.request import FeatureEntry, FeatureRequest, RequestedFeatures
 from app.core.constants import Brand
-from app.services.feature_orchestration import FeatureOrchestrationService
+from app.services.pipeline.feature_orchestration import FeatureOrchestrationService
 from app.cache.pers_cols_cache import PersColsCache
+from app.services.registry.feature_registry import FeatureRegistry
+from app.services.pipeline.feature_row_utils import normalize_feature_row
 from app.services.validation.feature_rules import FEATURE_WHITELIST_BY_GROUP
 
 from tests.conftest import FakeFeatureRepository
 
 
 def _svc(repo: FakeFeatureRepository) -> FeatureOrchestrationService:
-    return FeatureOrchestrationService(repo, PersColsCache(ttl_seconds=86_400))
+    reg = FeatureRegistry()
+    return FeatureOrchestrationService(
+        repo, PersColsCache(ttl_seconds=86_400), registry=reg
+    )
 
 
 def _default_pers_cols() -> dict[str, list[str]]:
@@ -192,7 +197,7 @@ async def test_two_cities_pui_values_summed() -> None:
 
 
 @pytest.mark.asyncio
-async def test_columns_passed_to_repo_match_pers_cols_cache() -> None:
+async def test_repo_methods_called_for_requested_groups() -> None:
     pc = _default_pers_cols()
     repo = FakeFeatureRepository(pers_cols=pc)
     repo.store_city = 1
@@ -211,44 +216,33 @@ async def test_columns_passed_to_repo_match_pers_cols_cache() -> None:
     await svc.fetch(req)
     assert repo.get_pers_user_item_calls
     assert repo.get_pers_item_by_items_calls
-    assert repo.get_pers_user_item_calls[0][3] == pc["pers_user_item"]
-    assert repo.get_pers_item_by_items_calls[0][3] == pc["pers_item"]
 
 
 class TestOrchestrationHelpers:
-    """_column_subset и _normalize_row без KeyDB."""
+    """FeatureRegistry.resolve_columns и normalize_feature_row без KeyDB."""
 
     def test_column_subset_requested_filters_whitelist_and_col_names(self) -> None:
-        repo = FakeFeatureRepository()
-        svc = _svc(repo)
+        reg = FeatureRegistry()
         col_names = ["ord_60", "price", "margin"]
-        allowed = FEATURE_WHITELIST_BY_GROUP["pers_item"]
-        idx, names = svc._column_subset(
-            col_names,
+        idx, names = reg.resolve_columns(
+            "pers_item",
             ["ord_60", "unknown_feature", "price"],
-            allowed,
+            col_names,
         )
         assert names == ["ord_60", "price"]
-        # порядок как в requested; индексы — позиции в col_names (price — второй столбец)
         assert idx == [0, 1]
 
     def test_column_subset_empty_requested_uses_intersection_with_allowed(self) -> None:
-        repo = FakeFeatureRepository()
-        svc = _svc(repo)
+        reg = FeatureRegistry()
         col_names = ["ord_60", "price", "not_in_whitelist"]
-        allowed = FEATURE_WHITELIST_BY_GROUP["pers_item"]
-        idx, names = svc._column_subset(col_names, None, allowed)
+        idx, names = reg.resolve_columns("pers_item", None, col_names)
         assert "not_in_whitelist" not in names
         assert "ord_60" in names
 
     def test_normalize_row_pads_short_vector(self) -> None:
-        repo = FakeFeatureRepository()
-        svc = _svc(repo)
-        out = svc._normalize_row([1], 3, item_id=1)
+        out = normalize_feature_row([1], 3, item_id=1)
         assert out == [1, 0, 0]
 
     def test_normalize_row_truncates_long_vector(self) -> None:
-        repo = FakeFeatureRepository()
-        svc = _svc(repo)
-        out = svc._normalize_row([1, 2, 3, 4], 2, item_id=1)
+        out = normalize_feature_row([1, 2, 3, 4], 2, item_id=1)
         assert out == [1, 2]

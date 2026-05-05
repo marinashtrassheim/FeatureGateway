@@ -1,106 +1,73 @@
 # Feature Gateway
 
-API-шлюз между ML-модулями и KeyDB/Redis для групп признаков `pers_item`, `pers_user_item`, `pers_offl`.
+API-шлюз между ML-модулями и Redis/KeyDB для групп признаков `pers_item`, `pers_user_item`, `pers_offl`.
 
-## Локальный запуск «с нуля»
+Хранилище: JSON-строки в значениях hash.
 
-Три отдельных Redis в Docker на портах хоста **7379 / 7380 / 7381** (v1 / v2 / v3). Дальше — клонирование, seed и проверочный запрос.
+## Локальный запуск
 
-### 1. Зависимости
+### Зависимости
 
 - Python 3.10+
 - Docker с Compose v2
 
-### 2. Клонирование и виртуальное окружение
+### Клонирование и окружение
 
 ```bash
 git clone <url> FeatureGateway
 cd FeatureGateway
 python3 -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 3. Поднять три Redis (v1 / v2 / v3)
+### Redis
+
+Поднимаются **два** контейнера: фичи и отдельный кэш ответа API.
 
 ```bash
 docker compose up -d
 ```
 
-На хосте:
+- **Фичи** (и `pers_offl` локально на том же инстансе): **`redis://127.0.0.1:6379/0`**
+- **Кэш ответа** `POST /features`: **`redis://127.0.0.1:6382/0`**
 
-| Роль в коде | URL в примере `.env` |
-|-------------|----------------------|
-| Хранилище v1 | `redis://127.0.0.1:7379/0` |
-| Хранилище v2 | `redis://127.0.0.1:7380/0` |
-| Хранилище v3 | `redis://127.0.0.1:7381/0` |
+Данные в compose хранятся в **именованных volumes** (`redis-data`, `redis-cache-data`), чтобы после `docker compose down` ключи не исчезали. Раньше без volume данные жили только в слое контейнера: при пересоздании образа/контейнера или `docker compose down -v` Redis мог оказаться **пустым** — это не адрес `127.0.0.1` vs `localhost`, а **новый пустой инстанс**. Восстановление возможно только из **бэкапа**, старого **volume** (`docker volume ls`) или если те же ключи ещё есть в другом Redis (например, не в Docker).
 
-### 4. Переменные окружения
+### Переменные окружения
 
 ```bash
 cp env.docker.example .env
 ```
 
-- **`STORAGE_VERSION`** — `v1`, `v2` или `v3`.
-- **`KEYDB_V1_URL` / `KEYDB_V2_URL` / `KEYDB_V3_URL`** — как в таблице выше.
-- **`KEYDB_DS_SECOND_URL`** — тот же хост и порт, что и основное хранилище для **выбранной** версии (`pers_offl` в том же Redis; в приложении два клиента к одному инстансу).
+- **`KEYDB_DS_URL`** — основной Redis с фичами.
+- **`KEYDB_DS_SECOND_URL`** — для `pers_offl`; локально совпадает с основным URL.
+- **`FEATURE_RESPONSE_CACHE_URL`** — второй Redis (кэш-aside ответа); пусто = без кэша ответа.
 
-Пример для проверки **v1**:
-
-```env
-STORAGE_VERSION=v1
-KEYDB_V1_URL=redis://127.0.0.1:7379/0
-KEYDB_V2_URL=redis://127.0.0.1:7380/0
-KEYDB_V3_URL=redis://127.0.0.1:7381/0
-KEYDB_DS_URL=redis://127.0.0.1:7379/0
-KEYDB_DS_SECOND_URL=redis://127.0.0.1:7379/0
-```
-
-Для **v2**: `STORAGE_VERSION=v2` и `KEYDB_DS_SECOND_URL=redis://127.0.0.1:7380/0` (и при необходимости `KEYDB_DS_URL` на тот же URL).
-
-`FEATURE_RESPONSE_CACHE_URL` оставьте пустым, если отдельный Redis под кэш ответа не нужен.
-
-### 5. Загрузить демо-данные (seed)
-
-Один раз — данные под все три формата хранения (отдельная БД на каждый порт):
-
-```bash
-python scripts/seed_demo_data.py --all --flush
-```
-
-Только одна версия:
-
-```bash
-python scripts/seed_demo_data.py --version v1 --flush
-```
-
-Порты по умолчанию в скрипте совпадают с `docker-compose.yml` (7379 / 7380 / 7381).
-
-### 6. Запуск API
+### Запуск API
 
 ```bash
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### 7. Проверочный запрос
-
-Тело запроса: `scripts/demo_request.json`.
-
-```bash
-python scripts/smoke_features_request.py
-```
-
-или:
+### Проверочный запрос
 
 ```bash
 curl -s -X POST http://127.0.0.1:8000/api/v1/features \
   -H "Content-Type: application/json" \
-  -d @scripts/demo_request.json
+  -d '{
+    "brand": "lo",
+    "items": [100001, 100002],
+    "entries": [{"user_id": 98117045, "store_id": 10}],
+    "requested_features": {
+      "pers_item": ["ord_60", "price"],
+      "pers_user_item": ["pers_pei"],
+      "pers_offl": ["offl_ord"]
+    }
+  }'
 ```
 
-Ожидается **200** и непустые блоки в `features`, если `STORAGE_VERSION`, `.env` и засидированный порт согласованы.
-
-### 8. Тесты (опционально)
+### Тесты (опционально)
 
 ```bash
 pip install -r requirements-dev.txt

@@ -4,7 +4,7 @@ from typing import Protocol, runtime_checkable
 
 from app.api.v1.schemas.request import FeatureRequest
 from app.core.exceptions import FeatureValidationError, ValidationErrorItem
-from app.services.validation.feature_rules import FEATURE_WHITELIST_BY_GROUP
+from app.services.registry.feature_registry import FeatureRegistry
 from app.services.validation.group_rules import FEATURE_GROUP_RULES, FeatureGroupRule
 
 
@@ -18,8 +18,11 @@ class FeatureRequestValidator:
     Бизнес-валидация после Pydantic.
 
     Правила по группам — в FEATURE_GROUP_RULES (расширение без новых if по именам групп).
-    Whitelist имён признаков — в FEATURE_WHITELIST_BY_GROUP.
+    Whitelist имён признаков — через FeatureRegistry.
     """
+
+    def __init__(self, registry: FeatureRegistry | None = None) -> None:
+        self._registry = registry or FeatureRegistry()
 
     def validate(self, request: FeatureRequest) -> None:
         errors: list[ValidationErrorItem] = []
@@ -100,7 +103,7 @@ class FeatureRequestValidator:
     ) -> None:
         rf = request.requested_features
         for group_key in groups:
-            allowed = FEATURE_WHITELIST_BY_GROUP.get(group_key)
+            allowed = self._registry.allowed_names(group_key)
             if not allowed:
                 continue
 
@@ -137,6 +140,15 @@ class FeatureRequestValidator:
                         + " необходим хотя бы один контекст (entries).",
                     )
                 )
+            return
+
+        if len(request.entries) != 1:
+            errors.append(
+                ValidationErrorItem(
+                    ("body", "entries"),
+                    "Текущий контракт поддерживает ровно один контекст в entries (len(entries) == 1).",
+                )
+            )
             return
 
         for entry_index, entry in enumerate(request.entries):

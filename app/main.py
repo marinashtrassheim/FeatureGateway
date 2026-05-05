@@ -10,8 +10,8 @@ from fastapi.exceptions import RequestValidationError
 from starlette.responses import JSONResponse
 
 from app.api.v1.endpoints.features import router as features_router
-from app.core.config import get_keydb_url_by_version, settings
-from app.core.exceptions import FeatureValidationError
+from app.core.config import settings
+from app.core.exceptions import FeatureStorageError, FeatureValidationError
 from app.repositories.keydb_client import KeyDbClient
 from app.cache.feature_response_cache import FeatureResponseCache
 
@@ -19,7 +19,7 @@ from app.cache.feature_response_cache import FeatureResponseCache
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Два клиента: KEYDB_DS_URL (как db_conn_1 в модели) и KEYDB_DS_SECOND_URL (pers_offl)."""
-    ds = KeyDbClient(get_keydb_url_by_version(settings.STORAGE_VERSION))
+    ds = KeyDbClient(settings.KEYDB_DS_URL)
     ds_second = KeyDbClient(settings.KEYDB_DS_SECOND_URL)
     await ds.connect()
     await ds_second.connect()
@@ -77,7 +77,6 @@ async def feature_validation_handler(
                 "ts": _now_iso(),
                 "level": "ERROR",
                 "event": "features_request",
-                "storage_version": settings.STORAGE_VERSION,
                 "path": str(request.url.path),
                 "http_status": 422,
                 "status": "VALIDATION_ERROR",
@@ -108,7 +107,6 @@ async def pydantic_validation_handler(
                 "ts": _now_iso(),
                 "level": "ERROR",
                 "event": "features_request",
-                "storage_version": settings.STORAGE_VERSION,
                 "path": str(request.url.path),
                 "http_status": 422,
                 "status": "INVALID_BODY",
@@ -124,5 +122,37 @@ async def pydantic_validation_handler(
             "code": "VALIDATION_ERROR",
             "message": "Ошибка формата запроса",
             "errors": exc.errors(),
+        },
+    )
+
+
+@app.exception_handler(FeatureStorageError)
+async def feature_storage_handler(
+    request: Request,
+    exc: FeatureStorageError,
+) -> JSONResponse:
+    logging.getLogger("feature_gateway").error(
+        json.dumps(
+            {
+                "ts": _now_iso(),
+                "level": "ERROR",
+                "event": "features_request",
+                "path": str(request.url.path),
+                "http_status": 503,
+                "status": "STORAGE_UNAVAILABLE",
+                "error_code": exc.code,
+                "error_message": exc.message,
+                "operation": exc.operation,
+                "key": exc.key,
+            },
+            ensure_ascii=False,
+        )
+    )
+    return JSONResponse(
+        status_code=503,
+        content={
+            "code": exc.code,
+            "message": "Хранилище признаков временно недоступно. Повторите запрос позже.",
+            "errors": [],
         },
     )

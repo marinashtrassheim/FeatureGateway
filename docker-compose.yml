@@ -1,21 +1,27 @@
-# Три инстанса Redis (протокол совместим с KeyDB): v1 / v2 / v3.
-# Порты хоста: 7379 / 7380 / 7381
+# Два Redis на хосте:
+#   redis          — фичи (pers_*), порты 6379:6379
+#   redis-cache    — cache-aside ответа POST /features, порт хоста 6382
+#
+# Именованные volumes — данные не пропадают после `docker compose down`
+# (если не выполнять `docker compose down -v`).
 #
 #   docker compose up -d
-#   python scripts/seed_demo_data.py --all --flush
 
 services:
-  keydb-v1:
+  redis:
     image: redis:7-alpine
     ports:
-      - "7379:6379"
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
 
-  keydb-v2:
+  redis-cache:
     image: redis:7-alpine
     ports:
-      - "7380:6379"
+      - "6382:6379"
+    volumes:
+      - redis-cache-data:/data
 
-  keydb-v3:
-    image: redis:7-alpine
-    ports:
-      - "7381:6379"
+volumes:
+  redis-data:
+  redis-cache-data:

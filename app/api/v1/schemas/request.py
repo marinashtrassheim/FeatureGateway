@@ -103,7 +103,10 @@ class FeatureRequest(BaseModel):
     )
     entries: list[FeatureEntry] = Field(
         default_factory=list,
-        description="Контексты запроса. Обычно передается один контекст с user_id и опциональным store_id.",
+        description=(
+            "Контексты запроса. Для текущего контракта поддерживается ровно один "
+            "контекст: len(entries) == 1."
+        ),
     )
     requested_features: RequestedFeatures
 

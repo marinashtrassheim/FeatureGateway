@@ -15,8 +15,6 @@ class FeatureRepository(Protocol):
         brand: str,
         user_id: int,
         city_id: int,
-        *,
-        columns: list[str] | None = None,
     ) -> dict[int, list[Any]]: ...
 
     async def get_pers_item_by_items(
@@ -24,8 +22,6 @@ class FeatureRepository(Protocol):
         brand: str,
         city_id: int,
         items: list[int],
-        *,
-        columns: list[str] | None = None,
     ) -> dict[int, list[Any]]: ...
 
     async def get_pers_offl(self, user_id: int) -> dict[int, list[Any]]: ...

@@ -15,6 +15,11 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+# Версия feature-контракта, влияющего на итоговую семантику ответа.
+# При изменении логики агрегации/registry/контракта ответа увеличивайте версию
+# (например, v1 -> v2), чтобы старые cache-key перестали совпадать.
+FEATURE_CONTRACT_VERSION = "v1"
+
 
 def _normalize_requested_features(rf: Any) -> dict[str, Any]:
     def norm(xs: list[str] | None) -> list[str] | None:
@@ -31,21 +36,19 @@ def _normalize_requested_features(rf: Any) -> dict[str, Any]:
 
 def _cache_key_payload(body: FeatureRequest) -> dict[str, Any]:
     """Только поля, влияющие на результат оркестрации."""
-    entries_payload = []
-    for e in body.entries:
-        entries_payload.append(
-            {
-                "user_id": e.user_id,
-                "store_id": e.store_id,
-                "search_query_norm": e.search_query_norm,
-                "channel": e.channel.value if e.channel is not None else None,
-            }
-        )
+    # Текущий контракт обрабатывает ровно один контекст (entries[0]).
+    e0 = body.entries[0] if body.entries else None
+    entry_payload = {
+        "user_id": e0.user_id if e0 else None,
+        "store_id": e0.store_id if e0 else None,
+        "search_query_norm": e0.search_query_norm if e0 else None,
+        "channel": e0.channel.value if (e0 and e0.channel is not None) else None,
+    }
     return {
-        "storage_version": settings.STORAGE_VERSION,
+        "contract_version": FEATURE_CONTRACT_VERSION,
         "brand": body.brand.value if body.brand else None,
         "items": sorted(body.items or []),
-        "entries": entries_payload,
+        "entry": entry_payload,
         "requested_features": _normalize_requested_features(body.requested_features),
     }
 
@@ -53,7 +56,7 @@ def _cache_key_payload(body: FeatureRequest) -> dict[str, Any]:
 def build_response_cache_key(body: FeatureRequest) -> str:
     raw = json.dumps(_cache_key_payload(body), sort_keys=True, ensure_ascii=False)
     digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
-    return f"gw:features:{settings.STORAGE_VERSION}:{digest}"
+    return f"gw:features:{FEATURE_CONTRACT_VERSION}:{digest}"
 
 
 class FeatureResponseCache:

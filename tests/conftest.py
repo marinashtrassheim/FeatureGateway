@@ -62,10 +62,8 @@ class FakeFeatureRepository:
         brand: str,
         user_id: int,
         city_id: int,
-        *,
-        columns: list[str] | None = None,
     ) -> dict[int, list[Any]]:
-        self.get_pers_user_item_calls.append((brand, user_id, city_id, columns))
+        self.get_pers_user_item_calls.append((brand, user_id, city_id))
         return dict(self.pui_by_city.get(city_id, {}))
 
     async def get_pers_item_by_items(
@@ -73,10 +71,8 @@ class FakeFeatureRepository:
         brand: str,
         city_id: int,
         items: list[int],
-        *,
-        columns: list[str] | None = None,
     ) -> dict[int, list[Any]]:
-        self.get_pers_item_by_items_calls.append((brand, city_id, tuple(items), columns))
+        self.get_pers_item_by_items_calls.append((brand, city_id, tuple(items)))
         return {k: v for k, v in self.pi_rows.items() if k in items}
 
     async def get_pers_offl(self, user_id: int) -> dict[int, list[Any]]:

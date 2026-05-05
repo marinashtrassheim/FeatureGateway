@@ -11,8 +11,7 @@ from fastapi import APIRouter, Depends, Request
 from app.api.deps import get_feature_orchestration, get_feature_request_validator
 from app.api.v1.schemas.request import FeatureRequest
 from app.api.v1.schemas.response import FeatureResponse
-from app.core.config import settings
-from app.services.feature_orchestration import FeatureOrchestrationService
+from app.services.pipeline.feature_orchestration import FeatureOrchestrationService
 from app.services.feature_request_validator import FeatureRequestValidator
 
 router = APIRouter(tags=["features"])
@@ -26,6 +25,7 @@ router = APIRouter(tags=["features"])
         "Универсальный запрос на получение `pers_item`, `pers_user_item`, `pers_offl` из KeyDB.\n\n"
         "- `brand`: бренд (`lo`, `mntk`, `utk`).\n"
         "- `items`: обязательный список `item_id` для фильтрации.\n"
+        "- `entries`: сейчас поддерживается ровно один контекст (`len(entries) == 1`).\n"
         "- `entries[0].user_id`: обязателен для `pers_user_item` и `pers_offl`.\n"
         "- `entries[0].store_id`: опционален, при передаче город определяется через `pers_hub_city`.\n"
         "- В `requested_features`:\n"
@@ -151,7 +151,6 @@ async def post_features(
             "ts": datetime.now(tz=timezone.utc).isoformat(),
             "level": "INFO",
             "event": "features_request",
-            "storage_version": settings.STORAGE_VERSION,
             "brand": body.brand.value if body.brand else None,
             "user_id": user_id,
             "store_id": store_id,

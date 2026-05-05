@@ -32,3 +32,45 @@ class FeatureValidationError(Exception):
 
     def errors_as_dicts(self) -> list[dict[str, Any]]:
         return [e.as_dict() for e in self.errors]
+
+
+class FeatureStorageError(Exception):
+    """Базовая ошибка доступа к хранилищу признаков (KeyDB)."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "FEATURE_STORAGE_ERROR",
+        operation: str | None = None,
+        key: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.message = message
+        self.code = code
+        self.operation = operation
+        self.key = key
+
+
+class FeatureStorageUnavailableError(FeatureStorageError):
+    """Хранилище признаков недоступно (timeout/connectivity)."""
+
+    def __init__(self, message: str, *, operation: str | None = None, key: str | None = None) -> None:
+        super().__init__(
+            message,
+            code="FEATURE_STORAGE_UNAVAILABLE",
+            operation=operation,
+            key=key,
+        )
+
+
+class FeatureStorageDataFormatError(FeatureStorageError):
+    """Некорректный формат данных в хранилище признаков."""
+
+    def __init__(self, message: str, *, operation: str | None = None, key: str | None = None) -> None:
+        super().__init__(
+            message,
+            code="FEATURE_STORAGE_DATA_FORMAT_ERROR",
+            operation=operation,
+            key=key,
+        )
