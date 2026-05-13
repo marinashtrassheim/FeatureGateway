@@ -71,21 +71,6 @@ async def feature_validation_handler(
     request: Request,
     exc: FeatureValidationError,
 ) -> JSONResponse:
-    logging.getLogger("feature_gateway").info(
-        json.dumps(
-            {
-                "ts": _now_iso(),
-                "level": "ERROR",
-                "event": "features_request",
-                "path": str(request.url.path),
-                "http_status": 422,
-                "status": "VALIDATION_ERROR",
-                "error_code": exc.code,
-                "error_message": exc.message,
-            },
-            ensure_ascii=False,
-        )
-    )
     return JSONResponse(
         status_code=422,
         content={
@@ -131,23 +116,6 @@ async def feature_storage_handler(
     request: Request,
     exc: FeatureStorageError,
 ) -> JSONResponse:
-    logging.getLogger("feature_gateway").error(
-        json.dumps(
-            {
-                "ts": _now_iso(),
-                "level": "ERROR",
-                "event": "features_request",
-                "path": str(request.url.path),
-                "http_status": 503,
-                "status": "STORAGE_UNAVAILABLE",
-                "error_code": exc.code,
-                "error_message": exc.message,
-                "operation": exc.operation,
-                "key": exc.key,
-            },
-            ensure_ascii=False,
-        )
-    )
     return JSONResponse(
         status_code=503,
         content={

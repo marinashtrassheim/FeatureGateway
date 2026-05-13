@@ -37,6 +37,8 @@ class FakeFeatureRepository:
     get_pers_cols_calls: int = 0
     get_store_city_calls: int = 0
     get_user_cities_calls: int = 0
+    resolve_city_context_calls: int = 0
+    fetch_primary_pui_pi_bundle_calls: int = 0
     get_pers_user_item_calls: list[tuple[Any, ...]] = field(default_factory=list)
     get_pers_item_by_items_calls: list[tuple[Any, ...]] = field(default_factory=list)
     get_pers_offl_calls: list[int] = field(default_factory=list)
@@ -56,6 +58,40 @@ class FakeFeatureRepository:
     async def get_user_cities(self, user_id: int) -> list[int]:
         self.get_user_cities_calls += 1
         return list(self.user_cities)
+
+    async def resolve_city_context(
+        self, store_id: int | None, user_id: int | None
+    ) -> tuple[int, list[int]]:
+        self.resolve_city_context_calls += 1
+        city_id = -1
+        user_cities: list[int] = []
+        if store_id is not None and store_id != -1:
+            found = await self.get_store_city(store_id)
+            if found is not None:
+                city_id = found
+        if city_id == -1 and user_id is not None:
+            user_cities = await self.get_user_cities(user_id)
+        return city_id, user_cities
+
+    async def fetch_primary_pui_pi_bundle(
+        self,
+        *,
+        brand: str,
+        user_id: int | None,
+        pers_item_city_id: int,
+        items: list[int],
+        pui_city_ids: tuple[int, ...],
+    ) -> tuple[list[dict[int, list[Any]]], dict[int, list[Any]]]:
+        self.fetch_primary_pui_pi_bundle_calls += 1
+        pui_rows: list[dict[int, list[Any]]] = []
+        for cid in pui_city_ids:
+            assert user_id is not None
+            pui_rows.append(await self.get_pers_user_item(brand, user_id, cid))
+        if items:
+            pi = await self.get_pers_item_by_items(brand, pers_item_city_id, list(items))
+        else:
+            pi = {}
+        return pui_rows, pi
 
     async def get_pers_user_item(
         self,

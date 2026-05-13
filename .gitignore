@@ -56,3 +56,11 @@ temp/
 # Локальные дампы Redis/KeyDB (GitHub: лимит 100 MB на файл)
 data/
 *.rdb
+
+# Локальные данные, ноутбуки, выгрузки (не в репозитории)
+common_rank_model/
+hash_sizes_sample.csv
+scripts/
+test_set_20260505.parquet
+testtest.ipynb
+логи latency.txt

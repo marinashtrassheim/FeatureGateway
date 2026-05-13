@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
+from typing import Any
+
 from app.api.v1.schemas.request import FeatureRequest
 from app.api.v1.schemas.response import FeatureResponse, FeaturesBlock, MetadataResponse
 from app.repositories.base import FeatureRepository
@@ -14,7 +17,7 @@ from app.services.pipeline.feature_assemblers import (
     PersUserItemAssembler,
 )
 from app.services.pipeline.feature_fetch_plan import build_feature_fetch_plan
-from app.services.pipeline.feature_loaders import PersItemLoader, PersOfflLoader, PersUserItemLoader
+from app.services.pipeline.feature_loaders import PersOfflLoader
 from app.services.registry.feature_registry import FeatureRegistry
 
 
@@ -26,8 +29,6 @@ class FeatureOrchestrationService:
         *,
         registry: FeatureRegistry | None = None,
         city_resolution: CityResolutionService | None = None,
-        pui_loader: PersUserItemLoader | None = None,
-        pi_loader: PersItemLoader | None = None,
         offl_loader: PersOfflLoader | None = None,
         pers_item_assembler: PersItemAssembler | None = None,
         pers_user_item_assembler: PersUserItemAssembler | None = None,
@@ -37,8 +38,6 @@ class FeatureOrchestrationService:
         self._pers_cols_cache = pers_cols_cache
         self._registry = registry or FeatureRegistry()
         self._city = city_resolution or CityResolutionService()
-        self._pui_loader = pui_loader or PersUserItemLoader()
-        self._pi_loader = pi_loader or PersItemLoader()
         self._offl_loader = offl_loader or PersOfflLoader()
         self._pi_asm = pers_item_assembler or PersItemAssembler(self._registry)
         self._pui_asm = pers_user_item_assembler or PersUserItemAssembler(
@@ -78,30 +77,53 @@ class FeatureOrchestrationService:
 
         rf = ctx.requested_features
 
-        if plan.pui_city_ids_in_order:
-            assert ctx.user_id is not None
-            pui_rows = await self._pui_loader.load(
-                self._repo,
+        need_primary_bundle = bool(plan.pui_city_ids_in_order) or plan.load_pers_item
+        offl_needed = plan.load_pers_offl
+
+        primary_pui_rows: list[dict[int, list[Any]]] | None = None
+        primary_pi: dict[int, list[Any]] | None = None
+        offl: dict[int, list[Any]] | None = None
+
+        bundle_coro = None
+        if need_primary_bundle:
+            pui_ids = plan.pui_city_ids_in_order if plan.pui_city_ids_in_order else tuple()
+            pi_items = ctx.items if plan.load_pers_item else []
+            bundle_coro = self._repo.fetch_primary_pui_pi_bundle(
                 brand=ctx.retail_brand,
                 user_id=ctx.user_id,
-                city_ids_in_order=plan.pui_city_ids_in_order,
+                pers_item_city_id=city_id,
+                items=pi_items,
+                pui_city_ids=pui_ids,
             )
+
+        offl_coro = None
+        if offl_needed:
+            assert ctx.user_id is not None
+            offl_coro = self._offl_loader.load(self._repo, ctx.user_id)
+
+        if bundle_coro is not None and offl_coro is not None:
+            (primary_pui_rows, primary_pi), offl = await asyncio.gather(
+                bundle_coro, offl_coro
+            )
+        elif bundle_coro is not None:
+            primary_pui_rows, primary_pi = await bundle_coro
+        elif offl_coro is not None:
+            offl = await offl_coro
+
+        if plan.pui_city_ids_in_order:
+            assert ctx.user_id is not None
+            assert primary_pui_rows is not None
             features_block.pers_user_item = self._pui_asm.build(
-                pui_rows,
+                primary_pui_rows,
                 all_names.get("pers_user_item", []),
                 rf.pers_user_item,
                 ctx.items,
             )
 
         if plan.load_pers_item:
-            pi = await self._pi_loader.load(
-                self._repo,
-                brand=ctx.retail_brand,
-                city_id=city_id,
-                items=ctx.items,
-            )
+            assert primary_pi is not None
             features_block.pers_item = self._pi_asm.build(
-                pi,
+                primary_pi,
                 ctx.items,
                 all_names.get("pers_item", []),
                 rf.pers_item,
@@ -109,7 +131,7 @@ class FeatureOrchestrationService:
 
         if plan.load_pers_offl:
             assert ctx.user_id is not None
-            offl = await self._offl_loader.load(self._repo, ctx.user_id)
+            assert offl is not None
             features_block.pers_offl = self._offl_asm.build(
                 offl,
                 all_names.get("pers_offl", []),

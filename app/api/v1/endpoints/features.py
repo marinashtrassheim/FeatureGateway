@@ -11,10 +11,52 @@ from fastapi import APIRouter, Depends, Request
 from app.api.deps import get_feature_orchestration, get_feature_request_validator
 from app.api.v1.schemas.request import FeatureRequest
 from app.api.v1.schemas.response import FeatureResponse
+from app.core.exceptions import FeatureStorageError, FeatureValidationError
 from app.services.pipeline.feature_orchestration import FeatureOrchestrationService
 from app.services.feature_request_validator import FeatureRequestValidator
 
 router = APIRouter(tags=["features"])
+
+
+def _features_request_log_payload(
+    *,
+    body: FeatureRequest,
+    duration_ms: float,
+    http_status: int,
+    status: str,
+    groups: list[str],
+    response_cache_hit: bool | None,
+    error_code: str | None = None,
+    error_message: str | None = None,
+    operation: str | None = None,
+    key: str | None = None,
+) -> dict:
+    entry0 = body.entries[0] if body.entries else None
+    user_id = getattr(entry0, "user_id", None)
+    store_id = getattr(entry0, "store_id", None)
+    payload: dict = {
+        "ts": datetime.now(tz=timezone.utc).isoformat(),
+        "level": "INFO",
+        "event": "features_request",
+        "brand": body.brand.value if body.brand else None,
+        "user_id": user_id,
+        "store_id": store_id,
+        "items_count": len(body.items or []),
+        "groups": groups,
+        "duration_ms": round(duration_ms, 2),
+        "http_status": http_status,
+        "status": status,
+        "response_cache_hit": response_cache_hit,
+    }
+    if error_code is not None:
+        payload["error_code"] = error_code
+    if error_message is not None:
+        payload["error_message"] = error_message
+    if operation is not None:
+        payload["operation"] = operation
+    if key is not None:
+        payload["key"] = key
+    return payload
 
 
 @router.post(
@@ -120,6 +162,7 @@ async def post_features(
         groups.append("pers_offl")
 
     response_cache_hit: bool | None = None
+
     try:
         validator.validate(body)
         cache = getattr(request.app.state, "feature_response_cache", None)
@@ -135,32 +178,73 @@ async def post_features(
         else:
             result = await orchestration.fetch(body)
             response_cache_hit = None
-        status = "OK"
-        http_status = 200
-    except Exception:
-        # Исключение будет обработано выше по стеку, но мы всё равно залогируем время.
-        status = "INTERNAL_ERROR"
-        http_status = 500
-        raise
-    finally:
+    except FeatureValidationError as exc:
         duration_ms = (perf_counter() - start) * 1000.0
-        entry0 = body.entries[0] if body.entries else None
-        user_id = getattr(entry0, "user_id", None)
-        store_id = getattr(entry0, "store_id", None)
-        log_payload = {
-            "ts": datetime.now(tz=timezone.utc).isoformat(),
-            "level": "INFO",
-            "event": "features_request",
-            "brand": body.brand.value if body.brand else None,
-            "user_id": user_id,
-            "store_id": store_id,
-            "items_count": len(body.items or []),
-            "groups": groups,
-            "duration_ms": round(duration_ms, 2),
-            "http_status": http_status,
-            "status": status,
-            "response_cache_hit": response_cache_hit,
-        }
-        logger.info(json.dumps(log_payload, ensure_ascii=False))
+        logger.info(
+            json.dumps(
+                _features_request_log_payload(
+                    body=body,
+                    duration_ms=duration_ms,
+                    http_status=422,
+                    status="VALIDATION_ERROR",
+                    groups=groups,
+                    response_cache_hit=response_cache_hit,
+                    error_code=exc.code,
+                    error_message=exc.message,
+                ),
+                ensure_ascii=False,
+            )
+        )
+        raise
+    except FeatureStorageError as exc:
+        duration_ms = (perf_counter() - start) * 1000.0
+        logger.error(
+            json.dumps(
+                _features_request_log_payload(
+                    body=body,
+                    duration_ms=duration_ms,
+                    http_status=503,
+                    status="STORAGE_UNAVAILABLE",
+                    groups=groups,
+                    response_cache_hit=response_cache_hit,
+                    error_code=exc.code,
+                    error_message=exc.message,
+                    operation=exc.operation,
+                    key=exc.key,
+                ),
+                ensure_ascii=False,
+            )
+        )
+        raise
+    except Exception:
+        duration_ms = (perf_counter() - start) * 1000.0
+        logger.error(
+            json.dumps(
+                _features_request_log_payload(
+                    body=body,
+                    duration_ms=duration_ms,
+                    http_status=500,
+                    status="INTERNAL_ERROR",
+                    groups=groups,
+                    response_cache_hit=response_cache_hit,
+                ),
+                ensure_ascii=False,
+            )
+        )
+        raise
 
+    duration_ms = (perf_counter() - start) * 1000.0
+    logger.info(
+        json.dumps(
+            _features_request_log_payload(
+                body=body,
+                duration_ms=duration_ms,
+                http_status=200,
+                status="OK",
+                groups=groups,
+                response_cache_hit=response_cache_hit,
+            ),
+            ensure_ascii=False,
+        )
+    )
     return result

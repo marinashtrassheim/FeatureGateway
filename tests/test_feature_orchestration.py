@@ -125,6 +125,7 @@ async def test_store_id_resolves_single_city_one_pui_call() -> None:
         requested_features=RequestedFeatures(pers_user_item=["pers_pei"]),
     )
     await svc.fetch(req)
+    assert repo.resolve_city_context_calls == 1
     assert repo.get_store_city_calls == 1
     assert len(repo.get_pers_user_item_calls) == 1
     assert repo.get_pers_user_item_calls[0][:3] == ("lo", 50, 100)
@@ -145,6 +146,7 @@ async def test_no_store_uses_user_cities_multiple_pui_calls() -> None:
         requested_features=RequestedFeatures(pers_user_item=["pers_pei"]),
     )
     await svc.fetch(req)
+    assert repo.resolve_city_context_calls == 1
     assert repo.get_user_cities_calls == 1
     assert len(repo.get_pers_user_item_calls) == 2
     cities_called = [c[2] for c in repo.get_pers_user_item_calls]
@@ -214,8 +216,9 @@ async def test_repo_methods_called_for_requested_groups() -> None:
         ),
     )
     await svc.fetch(req)
-    assert repo.get_pers_user_item_calls
-    assert repo.get_pers_item_by_items_calls
+    assert repo.fetch_primary_pui_pi_bundle_calls == 1
+    assert len(repo.get_pers_user_item_calls) >= 1
+    assert len(repo.get_pers_item_by_items_calls) >= 1
 
 
 class TestOrchestrationHelpers:
